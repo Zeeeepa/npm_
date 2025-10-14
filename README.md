@@ -1,20 +1,228 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
-
-# Run and deploy your AI Studio app
-
-This contains everything you need to run your app locally.
-
-View your app in AI Studio: https://ai.studio/apps/drive/1rZWLzxAMuXw09oT6_I7wkUdyvKEblGez
-
-## Run Locally
-
-**Prerequisites:**  Node.js
+https://unpkg.com/ - for instant file tree loading/ allowing analysis and codebase file structure views. as well as each cidefiles file content views.
 
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+LIBRARIES.io api key= 75280b2daf1cb0f6624c8824f1c107ba
+
+
+API Methods
+
+
+Authentication
+Rate limit
+Pagination
+Platforms
+Project
+Project Dependencies
+Project Dependents
+Project Dependent Repositories
+Project Contributors
+Project SourceRank
+Project Search
+Repository
+Repository Dependencies
+Repository Projects
+User
+User Repositories
+User Projects
+User Package Contributions
+User Repository Contributions
+User Dependencies
+User Subscriptions
+Subscribe to a project
+Check if subscribed to a project
+Update a subscription
+Unsubscribe from a project
+Wrappers
+
+API Key
+Your private token is used to access application resources without authentication. Keep it secret!
+
+View API documentation here: libraries.io/api
+
+Rate limit: 60 requests per minute
+
+Authentication
+All API requests must include api_key parameter, get your api key from your account page , all examples on this page include your API key.
+
+Rate limit
+All requests are subject to a 60 request/minute rate limit based on your API key, any further requests within that timeframe will result in a 429 response.
+Larger scale access to data is available from Tidelift.
+
+Pagination
+All requests that return multiple results can be paginated using the `page` and `per_page` query parameters.
+
+page (default is `1`)
+per_page (default is `30`, max is `100`)
+Platforms
+Get a list of supported package managers.
+
+GET https://libraries.io/api/platforms?api_key=75280b2daf1cb0f6624c8824f1c107ba
+
+Example: https://libraries.io/api/platforms?api_key=75280b2daf1cb0f6624c8824f1c107ba
+
+Project
+Get information about a package and its versions.
+
+GET https://libraries.io/api/:platform/:name?api_key=75280b2daf1cb0f6624c8824f1c107ba
+
+Example: https://libraries.io/api/NPM/base62?api_key=75280b2daf1cb0f6624c8824f1c107ba
+
+Project Dependencies
+Get a list of dependencies for a version of a project, pass latest to get dependency info for the latest available version
+
+GET https://libraries.io/api/:platform/:name/:version/dependencies?api_key=75280b2daf1cb0f6624c8824f1c107ba
+
+Example: https://libraries.io/api/NPM/base62/2.0.2/dependencies?api_key=75280b2daf1cb0f6624c8824f1c107ba
+
+
+Project Dependents
+Get packages that have at least one version that depends on a given project.
+
+The dependents endpoint accepts a subset parameter, one of name_only.
+
+GET https://libraries.io/api/:platform/:name/dependents?api_key=75280b2daf1cb0f6624c8824f1c107ba
+
+Example: https://libraries.io/api/NPM/base62/dependents?api_key=75280b2daf1cb0f6624c8824f1c107ba
+
+
+Project Dependent Repositories
+Get repositories that depend on a given project.
+
+GET https://libraries.io/api/:platform/:name/dependent_repositories?api_key=75280b2daf1cb0f6624c8824f1c107ba
+
+Example: https://libraries.io/api/NPM/base62/dependent_repositories?api_key=75280b2daf1cb0f6624c8824f1c107ba
+
+
+Project Contributors
+Get users that have contributed to a given project.
+
+GET https://libraries.io/api/:platform/:name/contributors?api_key=75280b2daf1cb0f6624c8824f1c107ba
+
+Example: https://libraries.io/api/NPM/base62/contributors?api_key=75280b2daf1cb0f6624c8824f1c107ba
+Project SourceRank
+Get breakdown of SourceRank score for a given project.
+
+GET https://libraries.io/api/:platform/:name/sourcerank?api_key=75280b2daf1cb0f6624c8824f1c107ba
+
+Example: https://libraries.io/api/NPM/base62/sourcerank?api_key=75280b2daf1cb0f6624c8824f1c107ba
+
+
+Project Search
+Search for projects
+
+GET https://libraries.io/api/search?q=grunt&api_key=75280b2daf1cb0f6624c8824f1c107ba
+
+The search endpoint accepts a sort parameter, one of rank, stars, dependents_count, dependent_repos_count, latest_release_published_at, contributions_count, created_at.
+
+The search endpoint accepts number of other parameters to filter results:
+
+languages
+licenses
+keywords
+platforms
+Example: https://libraries.io/api/search?q=grunt&api_key=75280b2daf1cb0f6624c8824f1c107ba
+
+
+
+Repository
+Get info for a repository. Currently only works for open source repositories.
+
+GET https://libraries.io/api/github/:owner/:name?api_key=75280b2daf1cb0f6624c8824f1c107ba
+
+Example: https://libraries.io/api/github/gruntjs/grunt?api_key=75280b2daf1cb0f6624c8824f1c107ba
+
+Repository Dependencies
+Get a list of dependencies for all of a repository's projects. Currently only works for open source repositories.
+
+GET https://libraries.io/api/github/:owner/:name/dependencies?api_key=75280b2daf1cb0f6624c8824f1c107ba
+
+Example: https://libraries.io/api/github/gruntjs/grunt/dependencies?api_key=75280b2daf1cb0f6624c8824f1c107ba
+
+Repository Projects
+Get a list of packages referencing the given repository.
+
+GET https://libraries.io/api/github/:owner/:name/projects?api_key=75280b2daf1cb0f6624c8824f1c107ba
+
+Example: https://libraries.io/api/github/gruntjs/grunt/projects?api_key=75280b2daf1cb0f6624c8824f1c107ba
+
+
+User
+Get information for a given user or organization.
+
+GET https://libraries.io/api/github/:login?api_key=75280b2daf1cb0f6624c8824f1c107ba
+
+Example: https://libraries.io/api/github/andrew?api_key=75280b2daf1cb0f6624c8824f1c107ba
+
+
+User Repositories
+Get repositories owned by a user.
+
+GET https://libraries.io/api/github/:login/repositories?api_key=75280b2daf1cb0f6624c8824f1c107ba
+
+Example: https://libraries.io/api/github/librariesio/repositories?api_key=75280b2daf1cb0f6624c8824f1c107ba
+
+
+User Packages
+Get a list of packages referencing the given user's repositories.
+
+GET https://libraries.io/api/github/:login/projects?api_key=75280b2daf1cb0f6624c8824f1c107ba
+
+Example: https://libraries.io/api/github/andrew/projects?api_key=75280b2daf1cb0f6624c8824f1c107ba
+
+
+User Packages Contributions
+Get a list of packages that the given user has contributed to.
+
+GET https://libraries.io/api/github/:login/project-contributions?api_key=75280b2daf1cb0f6624c8824f1c107ba
+
+Example: https://libraries.io/api/github/andrew/project-contributions?api_key=75280b2daf1cb0f6624c8824f1c107ba
+
+
+User Dependencies
+Get a list of unique packages that the given user's repositories list as a dependency. Ordered by frequency of use in those repositories.
+
+Parameters: platform
+
+GET https://libraries.io/api/github/:login/dependencies?api_key=75280b2daf1cb0f6624c8824f1c107ba
+
+Example: https://libraries.io/api/github/andrew/dependencies?api_key=75280b2daf1cb0f6624c8824f1c107ba
+
+
+User Subscriptions
+List packages that a user is subscribed to receive notifications about new releases.
+
+GET https://libraries.io/api/subscriptions?api_key=75280b2daf1cb0f6624c8824f1c107ba
+
+Example: https://libraries.io/api/subscriptions?api_key=75280b2daf1cb0f6624c8824f1c107ba
+
+
+Subscribe to a project
+Subscribe to receive notifications about new releases of a project.
+
+Parameters: include_prerelease
+
+POST https://libraries.io/api/subscriptions/:platform/:name?api_key=75280b2daf1cb0f6624c8824f1c107ba
+
+Example: https://libraries.io/api/subscriptions/NPM/base62?api_key=75280b2daf1cb0f6624c8824f1c107ba
+
+Check if subscribed to a project
+Check if a users is subscribed to receive notifications about new releases of a project.
+
+GET https://libraries.io/api/subscriptions/:platform/:name?api_key=75280b2daf1cb0f6624c8824f1c107ba
+
+Example: https://libraries.io/api/subscriptions/NPM/base62?api_key=75280b2daf1cb0f6624c8824f1c107ba
+
+Update a subscription
+Update the options for a subscription
+
+Parameters: include_prerelease
+
+PUT https://libraries.io/api/subscriptions/:platform/:name?api_key=75280b2daf1cb0f6624c8824f1c107ba
+
+Example: https://libraries.io/api/subscriptions/NPM/base62?api_key=75280b2daf1cb0f6624c8824f1c107ba
+Unsubscribe from a project
+Stop receiving release notifications from a project.
+
+DELETE https://libraries.io/api/subscriptions/:platform/:name?api_key=75280b2daf1cb0f6624c8824f1c107ba
+
+Example: https://libraries.io/api/subscriptions/NPM/base62?api_key=75280b2daf1cb0f6624c8824f1c107ba

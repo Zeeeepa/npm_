@@ -1,0 +1,664 @@
+-- Drop existing tables in reverse order of dependency
+DROP TABLE IF EXISTS public.code_references CASCADE;
+DROP TABLE IF EXISTS public.code_symbols CASCADE;
+DROP TABLE IF EXISTS public.file_dependencies CASCADE;
+DROP TABLE IF EXISTS public.code_files CASCADE;
+DROP TABLE IF EXISTS public.directory_tree CASCADE;
+DROP TABLE IF EXISTS public.package_versions CASCADE;
+DROP TABLE IF EXISTS public.package_analyses CASCADE;
+DROP TABLE IF EXISTS public.saved_packages CASCADE;
+DROP TABLE IF EXISTS public.packages CASCADE;
+DROP TABLE IF EXISTS public.search_result_items CASCADE;
+DROP TABLE IF EXISTS public.past_searches CASCADE;
+
+--
+-- Core packages table with enhanced metadata
+--
+CREATE TABLE public.packages (
+    id BIGSERIAL PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    package_data JSONB NOT NULL, -- Full NPM package metadata
+    description TEXT,
+    repository_url TEXT,
+    homepage_url TEXT,
+    npm_url TEXT,
+    author JSONB, -- {"name": "John Doe", "email": "...", "url": "..."}
+    maintainers JSONB, -- Array of maintainer objects
+    keywords TEXT[],
+    license TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ,
+    last_synced_at TIMESTAMPTZ,
+    download_stats JSONB, -- {"daily": 1000, "weekly": 7000, "monthly": 30000}
+    github_stars INT,
+    github_forks INT,
+    github_issues INT,
+    npm_version_count INT,
+    is_deprecated BOOLEAN DEFAULT false,
+    deprecation_message TEXT
+);
+
+COMMENT ON TABLE public.packages IS 'Core NPM packages table with comprehensive metadata.';
+
+CREATE INDEX idx_packages_name ON public.packages(name);
+CREATE INDEX idx_packages_keywords ON public.packages USING GIN(keywords);
+CREATE INDEX idx_packages_updated_at ON public.packages(updated_at DESC);
+CREATE INDEX idx_packages_github_stars ON public.packages(github_stars DESC NULLS LAST);
+
+--
+-- Saved/bookmarked packages by users
+--
+CREATE TABLE public.saved_packages (
+    id BIGSERIAL PRIMARY KEY,
+    package_name TEXT NOT NULL REFERENCES public.packages(name) ON DELETE CASCADE,
+    saved_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    notes TEXT,
+    tags TEXT[],
+    favorite BOOLEAN DEFAULT false,
+    UNIQUE(package_name)
+);
+
+COMMENT ON TABLE public.saved_packages IS 'User-saved/bookmarked packages.';
+
+CREATE INDEX idx_saved_packages_package_name ON public.saved_packages(package_name);
+CREATE INDEX idx_saved_packages_favorite ON public.saved_packages(favorite) WHERE favorite = true;
+
+--
+-- Package analysis results (metrics, quality scores, etc.)
+--
+CREATE TABLE public.package_analyses (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    package_name TEXT NOT NULL REFERENCES public.packages(name) ON DELETE CASCADE,
+    analyzed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    analysis_version TEXT DEFAULT '1.0',
+    
+    -- Code metrics
+    total_files INT,
+    total_lines_of_code INT,
+    total_size_bytes BIGINT,
+    language_breakdown JSONB, -- {"JavaScript": 45000, "TypeScript": 32000}
+    
+    -- Complexity metrics
+    average_complexity NUMERIC(10,2),
+    max_complexity INT,
+    total_functions INT,
+    total_classes INT,
+    total_interfaces INT,
+    
+    -- Dependency metrics
+    direct_dependencies INT,
+    dev_dependencies INT,
+    peer_dependencies INT,
+    total_dependencies INT,
+    
+    -- Quality scores
+    maintainability_score NUMERIC(5,2), -- 0-100
+    test_coverage NUMERIC(5,2), -- 0-100
+    documentation_coverage NUMERIC(5,2), -- 0-100
+    
+    -- Security
+    known_vulnerabilities INT DEFAULT 0,
+    license_issues JSONB,
+    
+    -- Additional metadata
+    has_tests BOOLEAN,
+    has_typescript BOOLEAN,
+    has_documentation BOOLEAN,
+    build_tools JSONB, -- ["webpack", "rollup", "esbuild"]
+    frameworks JSONB, -- ["react", "vue", "express"]
+    
+    analysis_metadata JSONB, -- Store detailed analysis results
+    
+    UNIQUE(package_name, analyzed_at)
+);
+
+COMMENT ON TABLE public.package_analyses IS 'Comprehensive analysis results for packages.';
+
+CREATE INDEX idx_package_analyses_package_name ON public.package_analyses(package_name);
+CREATE INDEX idx_package_analyses_maintainability ON public.package_analyses(maintainability_score DESC);
+
+--
+-- Package versions with detailed metadata
+--
+CREATE TABLE public.package_versions (
+    id BIGSERIAL PRIMARY KEY,
+    package_name TEXT NOT NULL REFERENCES public.packages(name) ON DELETE CASCADE,
+    version TEXT NOT NULL,
+    version_major INT,
+    version_minor INT,
+    version_patch INT,
+    is_latest BOOLEAN DEFAULT false,
+    is_prerelease BOOLEAN DEFAULT false,
+    
+    -- Distribution info
+    tarball_url TEXT,
+    shasum TEXT,
+    integrity TEXT,
+    unpacked_size BIGINT,
+    file_count INT,
+    
+    -- Dependencies
+    dependencies JSONB,
+    dev_dependencies JSONB,
+    peer_dependencies JSONB,
+    optional_dependencies JSONB,
+    bundled_dependencies JSONB,
+    
+    -- Metadata
+    published_at TIMESTAMPTZ,
+    published_by JSONB, -- Author/maintainer who published
+    git_head TEXT, -- Git commit SHA
+    
+    -- Engine requirements
+    node_version TEXT, -- ">=14.0.0"
+    npm_version TEXT,
+    
+    -- Scripts and configuration
+    scripts JSONB,
+    bin JSONB, -- Executable binaries
+    main_entry_point TEXT,
+    module_entry_point TEXT,
+    types_entry_point TEXT,
+    exports JSONB, -- Package exports map
+    
+    -- Sync status
+    contents_synced BOOLEAN DEFAULT false,
+    synced_at TIMESTAMPTZ,
+    
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    
+    UNIQUE(package_name, version)
+);
+
+COMMENT ON TABLE public.package_versions IS 'Detailed version information for each package.';
+
+CREATE INDEX idx_package_versions_package_name ON public.package_versions(package_name);
+CREATE INDEX idx_package_versions_is_latest ON public.package_versions(package_name, is_latest) WHERE is_latest = true;
+CREATE INDEX idx_package_versions_published_at ON public.package_versions(published_at DESC);
+CREATE INDEX idx_package_versions_synced ON public.package_versions(contents_synced);
+
+--
+-- Directory tree structure for package versions
+--
+CREATE TABLE public.directory_tree (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    version_id BIGINT NOT NULL REFERENCES public.package_versions(id) ON DELETE CASCADE,
+    path TEXT NOT NULL, -- Full path: /src/components/Button.tsx
+    name TEXT NOT NULL, -- Just the name: Button.tsx
+    type TEXT NOT NULL CHECK (type IN ('file', 'directory', 'symlink')),
+    parent_path TEXT, -- Parent directory path
+    depth INT NOT NULL DEFAULT 0, -- Depth in directory tree (0 = root)
+    size_bytes BIGINT, -- File size in bytes (NULL for directories)
+    mode TEXT, -- File permissions (e.g., "0644")
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    
+    UNIQUE(version_id, path)
+);
+
+COMMENT ON TABLE public.directory_tree IS 'Complete directory structure for each package version.';
+
+CREATE INDEX idx_directory_tree_version_id ON public.directory_tree(version_id);
+CREATE INDEX idx_directory_tree_path ON public.directory_tree(version_id, path);
+CREATE INDEX idx_directory_tree_parent_path ON public.directory_tree(version_id, parent_path);
+CREATE INDEX idx_directory_tree_type ON public.directory_tree(version_id, type);
+
+--
+-- Code files with complete content and metadata
+--
+CREATE TABLE public.code_files (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    version_id BIGINT NOT NULL REFERENCES public.package_versions(id) ON DELETE CASCADE,
+    directory_entry_id UUID REFERENCES public.directory_tree(id) ON DELETE CASCADE,
+    path TEXT NOT NULL, -- Normalized path
+    storage_path TEXT, -- Storage location (if using external storage)
+    
+    -- Content
+    content TEXT, -- Full file content
+    content_hash TEXT, -- SHA256 hash for deduplication
+    encoding TEXT DEFAULT 'utf-8',
+    
+    -- Classification
+    language TEXT, -- Detected programming language
+    file_type TEXT, -- source, test, config, documentation, asset, build
+    file_extension TEXT,
+    mime_type TEXT,
+    is_binary BOOLEAN DEFAULT false,
+    is_generated BOOLEAN DEFAULT false,
+    is_minified BOOLEAN DEFAULT false,
+    is_test_file BOOLEAN DEFAULT false,
+    is_entry_point BOOLEAN DEFAULT false,
+    
+    -- Metrics
+    line_count INT,
+    char_count INT,
+    blank_lines INT,
+    comment_lines INT,
+    code_lines INT,
+    size_bytes BIGINT,
+    
+    -- Analysis metadata
+    imports JSONB, -- Array of import statements
+    exports JSONB, -- Array of export statements
+    requires JSONB, -- CommonJS requires
+    external_dependencies TEXT[], -- External packages used
+    
+    -- Syntax/parsing info
+    parsed BOOLEAN DEFAULT false,
+    parse_error TEXT,
+    ast_hash TEXT, -- Hash of AST for change detection
+    
+    file_metadata JSONB, -- Additional flexible metadata
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    
+    UNIQUE(version_id, path)
+);
+
+COMMENT ON TABLE public.code_files IS 'Complete file contents and metadata for analysis.';
+
+CREATE INDEX idx_code_files_version_id ON public.code_files(version_id);
+CREATE INDEX idx_code_files_path ON public.code_files(version_id, path);
+CREATE INDEX idx_code_files_language ON public.code_files(language);
+CREATE INDEX idx_code_files_file_type ON public.code_files(file_type);
+CREATE INDEX idx_code_files_content_hash ON public.code_files(content_hash);
+CREATE INDEX idx_code_files_is_entry_point ON public.code_files(version_id, is_entry_point) WHERE is_entry_point = true;
+
+--
+-- File dependencies (imports/requires between files)
+--
+CREATE TABLE public.file_dependencies (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    version_id BIGINT NOT NULL REFERENCES public.package_versions(id) ON DELETE CASCADE,
+    source_file_id UUID NOT NULL REFERENCES public.code_files(id) ON DELETE CASCADE,
+    target_file_id UUID REFERENCES public.code_files(id) ON DELETE CASCADE,
+    
+    -- Dependency details
+    source_path TEXT NOT NULL,
+    import_statement TEXT NOT NULL, -- Original import/require statement
+    resolved_path TEXT, -- Resolved path
+    dependency_type TEXT NOT NULL, -- import, require, dynamic_import, type_import
+    import_kind TEXT, -- value, type, typeof, namespace
+    
+    -- Imported symbols
+    imported_symbols JSONB, -- [{"name": "Button", "alias": "Btn", "kind": "named"}]
+    is_wildcard BOOLEAN DEFAULT false, -- import * as X
+    is_default BOOLEAN DEFAULT false, -- import X (default)
+    is_side_effect BOOLEAN DEFAULT false, -- import './styles.css'
+    
+    -- Classification
+    is_external BOOLEAN DEFAULT false, -- External package vs internal file
+    package_name TEXT, -- For external: "react", "lodash"
+    package_version TEXT,
+    is_dev_dependency BOOLEAN DEFAULT false,
+    is_peer_dependency BOOLEAN DEFAULT false,
+    
+    -- Location in source
+    line_number INT,
+    column_number INT,
+    
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    
+    UNIQUE(version_id, source_file_id, import_statement, line_number)
+);
+
+COMMENT ON TABLE public.file_dependencies IS 'Tracks all dependencies between files and external packages.';
+
+CREATE INDEX idx_file_dependencies_version_id ON public.file_dependencies(version_id);
+CREATE INDEX idx_file_dependencies_source_file ON public.file_dependencies(source_file_id);
+CREATE INDEX idx_file_dependencies_target_file ON public.file_dependencies(target_file_id);
+CREATE INDEX idx_file_dependencies_external ON public.file_dependencies(is_external);
+CREATE INDEX idx_file_dependencies_package ON public.file_dependencies(package_name);
+
+--
+-- Code symbols (functions, classes, variables, types, etc.)
+--
+CREATE TABLE public.code_symbols (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    file_id UUID NOT NULL REFERENCES public.code_files(id) ON DELETE CASCADE,
+    version_id BIGINT NOT NULL REFERENCES public.package_versions(id) ON DELETE CASCADE,
+    parent_symbol_id UUID REFERENCES public.code_symbols(id) ON DELETE CASCADE,
+    
+    -- Identification
+    name TEXT NOT NULL,
+    qualified_name TEXT, -- Full qualified name: MyClass.myMethod
+    display_name TEXT, -- Name as shown in code (may include generics)
+    
+    -- Classification
+    symbol_type TEXT NOT NULL, -- function, class, interface, type, enum, variable, constant, method, property, parameter, etc.
+    symbol_kind TEXT, -- declaration, expression, arrow_function, etc.
+    scope TEXT, -- global, module, class, function, block
+    
+    -- Visibility/Access
+    visibility TEXT, -- public, private, protected, internal, package
+    is_exported BOOLEAN DEFAULT false,
+    export_type TEXT, -- default, named, namespace
+    is_static BOOLEAN DEFAULT false,
+    is_abstract BOOLEAN DEFAULT false,
+    is_async BOOLEAN DEFAULT false,
+    is_generator BOOLEAN DEFAULT false,
+    is_readonly BOOLEAN DEFAULT false,
+    is_optional BOOLEAN DEFAULT false,
+    
+    -- Location in file
+    start_line INT,
+    end_line INT,
+    start_col INT,
+    end_col INT,
+    
+    -- Function/Method specific
+    signature TEXT, -- Full signature as string
+    parameters JSONB, -- [{"name": "x", "type": "number", "optional": false, "default": null}]
+    return_type TEXT,
+    type_parameters JSONB, -- Generic type parameters: [{"name": "T", "constraint": "extends BaseType"}]
+    
+    -- Class/Interface specific
+    extends_types TEXT[], -- Parent classes/interfaces
+    implements_types TEXT[], -- Implemented interfaces
+    
+    -- Variable/Property specific
+    value_type TEXT, -- Data type
+    initial_value TEXT, -- Initial value as string
+    
+    -- Documentation
+    docstring TEXT, -- JSDoc, TSDoc, etc.
+    doc_tags JSONB, -- Parsed doc tags: [{"tag": "param", "name": "x", "description": "..."}]
+    description TEXT, -- Extracted description
+    
+    -- Decorators/Annotations
+    decorators JSONB, -- [{"name": "@Component", "arguments": {...}}]
+    
+    -- Modifiers
+    modifiers TEXT[], -- [static, async, readonly, const, let, var]
+    
+    -- Metrics
+    complexity_score INT, -- Cyclomatic complexity
+    lines_of_code INT,
+    cognitive_complexity INT,
+    
+    -- Type information
+    inferred_type TEXT, -- For type inference analysis
+    type_complexity INT, -- Complexity of type definition
+    
+    -- Usage information
+    is_used BOOLEAN, -- Is this symbol used anywhere
+    usage_count INT DEFAULT 0, -- How many times referenced
+    
+    symbol_metadata JSONB, -- Additional language-specific metadata
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.code_symbols IS 'All code symbols extracted from parsed files (functions, classes, types, variables, etc.)';
+
+CREATE INDEX idx_code_symbols_file_id ON public.code_symbols(file_id);
+CREATE INDEX idx_code_symbols_version_id ON public.code_symbols(version_id);
+CREATE INDEX idx_code_symbols_name ON public.code_symbols(name);
+CREATE INDEX idx_code_symbols_qualified_name ON public.code_symbols(qualified_name);
+CREATE INDEX idx_code_symbols_type ON public.code_symbols(symbol_type);
+CREATE INDEX idx_code_symbols_parent ON public.code_symbols(parent_symbol_id);
+CREATE INDEX idx_code_symbols_exported ON public.code_symbols(version_id, is_exported) WHERE is_exported = true;
+CREATE INDEX idx_code_symbols_complexity ON public.code_symbols(complexity_score DESC);
+
+--
+-- Code references (where symbols are used/referenced)
+--
+CREATE TABLE public.code_references (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    version_id BIGINT NOT NULL REFERENCES public.package_versions(id) ON DELETE CASCADE,
+    symbol_id UUID NOT NULL REFERENCES public.code_symbols(id) ON DELETE CASCADE,
+    file_id UUID NOT NULL REFERENCES public.code_files(id) ON DELETE CASCADE,
+    
+    -- Location of reference
+    line_number INT NOT NULL,
+    column_number INT NOT NULL,
+    end_line INT,
+    end_column INT,
+    
+    -- Context
+    reference_type TEXT NOT NULL, -- call, read, write, type_reference, import, export
+    context TEXT, -- Surrounding code context
+    
+    -- Call-specific info
+    is_constructor_call BOOLEAN DEFAULT false,
+    arguments JSONB, -- Array of argument information
+    
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.code_references IS 'Tracks where and how symbols are used throughout the codebase.';
+
+CREATE INDEX idx_code_references_symbol_id ON public.code_references(symbol_id);
+CREATE INDEX idx_code_references_file_id ON public.code_references(file_id);
+CREATE INDEX idx_code_references_version_id ON public.code_references(version_id);
+CREATE INDEX idx_code_references_type ON public.code_references(reference_type);
+
+--
+-- Past searches with complete context
+--
+CREATE TABLE public.past_searches (
+    id TEXT PRIMARY KEY,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    query TEXT NOT NULL,
+    search_mode TEXT NOT NULL, -- standard, advanced, semantic
+    total_found INT NOT NULL,
+    search_duration_ms INT,
+    
+    -- Search configuration
+    filters JSONB NOT NULL, -- All filter settings used
+    sort_by TEXT, -- downloads, stars, relevance, updated
+    
+    -- Results metadata
+    results_data JSONB NOT NULL, -- Array of result objects
+    result_count INT, -- Number of results returned (vs total_found)
+    
+    -- Analytics
+    user_clicked BOOLEAN DEFAULT false,
+    clicked_package_name TEXT,
+    time_to_click_ms INT
+);
+
+COMMENT ON TABLE public.past_searches IS 'Search history with complete context and analytics.';
+
+CREATE INDEX idx_past_searches_created_at ON public.past_searches(created_at DESC);
+CREATE INDEX idx_past_searches_query ON public.past_searches(query);
+
+--
+-- Individual search result items (for better querying)
+--
+CREATE TABLE public.search_result_items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    search_id TEXT NOT NULL REFERENCES public.past_searches(id) ON DELETE CASCADE,
+    package_name TEXT NOT NULL REFERENCES public.packages(name) ON DELETE CASCADE,
+    result_position INT NOT NULL, -- Position in results (1-based)
+    relevance_score NUMERIC(10,4),
+    
+    -- Snapshot of package data at search time
+    package_snapshot JSONB,
+    
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    
+    UNIQUE(search_id, package_name)
+);
+
+COMMENT ON TABLE public.search_result_items IS 'Individual items from search results for granular analysis.';
+
+CREATE INDEX idx_search_result_items_search_id ON public.search_result_items(search_id);
+CREATE INDEX idx_search_result_items_package_name ON public.search_result_items(package_name);
+CREATE INDEX idx_search_result_items_position ON public.search_result_items(result_position);
+
+--
+-- Useful views for common queries
+--
+
+-- View for complete package information with latest version
+CREATE VIEW package_overview AS
+SELECT 
+    p.*,
+    pv.version as latest_version,
+    pv.unpacked_size,
+    pv.file_count,
+    pv.published_at as latest_published_at,
+    pa.total_files,
+    pa.total_lines_of_code,
+    pa.maintainability_score,
+    pa.total_functions,
+    pa.total_classes,
+    sp.saved_at,
+    sp.favorite,
+    sp.tags
+FROM packages p
+LEFT JOIN package_versions pv ON p.name = pv.package_name AND pv.is_latest = true
+LEFT JOIN package_analyses pa ON p.name = pa.package_name
+LEFT JOIN saved_packages sp ON p.name = sp.package_name;
+
+-- View for file tree with metadata
+CREATE VIEW file_tree_view AS
+SELECT 
+    dt.version_id,
+    pv.package_name,
+    pv.version,
+    dt.path,
+    dt.name,
+    dt.type,
+    dt.depth,
+    cf.language,
+    cf.file_type,
+    cf.line_count,
+    cf.size_bytes,
+    cf.is_entry_point
+FROM directory_tree dt
+LEFT JOIN code_files cf ON dt.id = cf.directory_entry_id
+JOIN package_versions pv ON dt.version_id = pv.id;
+
+-- View for symbol hierarchy
+CREATE VIEW symbol_hierarchy_view AS
+WITH RECURSIVE symbol_tree AS (
+    SELECT 
+        cs.*,
+        cf.path as file_path,
+        pv.package_name,
+        pv.version,
+        1 as depth,
+        ARRAY[cs.id] as path_ids,
+        cs.qualified_name as full_path
+    FROM code_symbols cs
+    JOIN code_files cf ON cs.file_id = cf.id
+    JOIN package_versions pv ON cs.version_id = pv.id
+    WHERE cs.parent_symbol_id IS NULL
+    
+    UNION ALL
+    
+    SELECT 
+        cs.*,
+        st.file_path,
+        st.package_name,
+        st.version,
+        st.depth + 1,
+        st.path_ids || cs.id,
+        st.full_path || '.' || cs.name
+    FROM code_symbols cs
+    JOIN symbol_tree st ON cs.parent_symbol_id = st.id
+)
+SELECT * FROM symbol_tree;
+
+-- View for dependency graph
+CREATE VIEW dependency_graph_view AS
+SELECT 
+    pv.package_name,
+    pv.version,
+    sf.path as source_file,
+    tf.path as target_file,
+    fd.dependency_type,
+    fd.imported_symbols,
+    fd.is_external,
+    fd.package_name as dependency_package,
+    fd.is_wildcard,
+    fd.is_default
+FROM file_dependencies fd
+JOIN package_versions pv ON fd.version_id = pv.id
+JOIN code_files sf ON fd.source_file_id = sf.id
+LEFT JOIN code_files tf ON fd.target_file_id = tf.id;
+
+-- View for exported symbols (public API)
+CREATE VIEW package_exports_view AS
+SELECT 
+    pv.package_name,
+    pv.version,
+    cf.path as file_path,
+    cs.name,
+    cs.qualified_name,
+    cs.symbol_type,
+    cs.export_type,
+    cs.signature,
+    cs.return_type,
+    cs.docstring,
+    cs.parameters
+FROM code_symbols cs
+JOIN code_files cf ON cs.file_id = cf.id
+JOIN package_versions pv ON cs.version_id = pv.id
+WHERE cs.is_exported = true
+ORDER BY pv.package_name, cf.path, cs.name;
+
+-- View for symbol usage analysis
+CREATE VIEW symbol_usage_view AS
+SELECT 
+    cs.id as symbol_id,
+    pv.package_name,
+    cs.qualified_name,
+    cs.symbol_type,
+    COUNT(cr.id) as reference_count,
+    COUNT(DISTINCT cr.file_id) as files_used_in,
+    ARRAY_AGG(DISTINCT cr.reference_type) as reference_types
+FROM code_symbols cs
+JOIN package_versions pv ON cs.version_id = pv.id
+LEFT JOIN code_references cr ON cs.id = cr.symbol_id
+GROUP BY cs.id, pv.package_name, cs.qualified_name, cs.symbol_type;
+
+--
+-- Enable Row Level Security
+--
+ALTER TABLE public.packages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.saved_packages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.package_analyses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.package_versions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.directory_tree ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.code_files ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.file_dependencies ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.code_symbols ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.code_references ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.past_searches ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.search_result_items ENABLE ROW LEVEL SECURITY;
+
+--
+-- Create permissive policies (adjust for production with auth.uid())
+--
+CREATE POLICY "Allow all access to packages" ON public.packages
+    FOR ALL USING (true) WITH CHECK (true);
+
+CREATE POLICY "Allow all access to saved_packages" ON public.saved_packages
+    FOR ALL USING (true) WITH CHECK (true);
+
+CREATE POLICY "Allow all access to package_analyses" ON public.package_analyses
+    FOR ALL USING (true) WITH CHECK (true);
+
+CREATE POLICY "Allow all access to package_versions" ON public.package_versions
+    FOR ALL USING (true) WITH CHECK (true);
+
+CREATE POLICY "Allow all access to directory_tree" ON public.directory_tree
+    FOR ALL USING (true) WITH CHECK (true);
+
+CREATE POLICY "Allow all access to code_files" ON public.code_files
+    FOR ALL USING (true) WITH CHECK (true);
+
+CREATE POLICY "Allow all access to file_dependencies" ON public.file_dependencies
+    FOR ALL USING (true) WITH CHECK (true);
+
+CREATE POLICY "Allow all access to code_symbols" ON public.code_symbols
+    FOR ALL USING (true) WITH CHECK (true);
+
+CREATE POLICY "Allow all access to code_references" ON public.code_references
+    FOR ALL USING (true) WITH CHECK (true);
+
+CREATE POLICY "Allow all access to past_searches" ON public.past_searches
+    FOR ALL USING (true) WITH CHECK (true);
+
+CREATE POLICY "Allow all access to search_result_items" ON public.search_result_items
+    FOR ALL USING (true) WITH CHECK (true);

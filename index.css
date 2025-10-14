@@ -1,0 +1,86 @@
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+}
+
+/* Custom scrollbar styling for a more integrated look */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #161B22; /* secondary */
+}
+
+::-webkit-scrollbar-thumb {
+  background: #30363D; /* border-color */
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #8B949E; /* text-secondary */
+}
+
+/* Styles for rendered README content */
+.readme-content {
+    line-height: 1.6;
+}
+.readme-content h1, .readme-content h2, .readme-content h3, .readme-content h4, .readme-content h5, .readme-content h6 {
+    border-bottom: 1px solid #30363D; /* border-color */
+    padding-bottom: 0.3em;
+    margin-top: 24px;
+    margin-bottom: 16px;
+    font-weight: 600;
+}
+.readme-content h1 { font-size: 2em; }
+.readme-content h2 { font-size: 1.5em; }
+.readme-content h3 { font-size: 1.25em; }
+.readme-content a {
+    color: #EF4444; /* accent */
+    text-decoration: none;
+}
+.readme-content a:hover {
+    text-decoration: underline;
+}
+.readme-content p {
+    margin-bottom: 16px;
+}
+.readme-content code {
+    background-color: #21262D; /* tertiary */
+    padding: 0.2em 0.4em;
+    margin: 0;
+    font-size: 85%;
+    border-radius: 6px;
+    font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+}
+.readme-content pre {
+    background-color: #21262D; /* tertiary */
+    padding: 16px;
+    overflow: auto;
+    border-radius: 6px;
+    margin-bottom: 16px;
+}
+.readme-content pre code {
+    padding: 0;
+    margin: 0;
+    font-size: 100%;
+    background: transparent;
+}
+.readme-content ul, .readme-content ol {
+    padding-left: 2em;
+    margin-bottom: 16px;
+}
+.readme-content li {
+    margin-top: 0.25em;
+}
+.readme-content blockquote {
+    padding: 0 1em;
+    color: #8B949E; /* text-secondary */
+    border-left: 0.25em solid #30363D; /* border-color */
+    margin: 0 0 16px;
+}
+.readme-content img {
+  max-width: 100%;
+  background-color: white;
+  border-radius: 6px;
+}

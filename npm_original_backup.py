@@ -57,164 +57,11 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        RotatingFileHandler('npm_analyzer.log', maxBytes=MAX_LOG_SIZE_MB * 1024 * 1024, backupCount=2),
+        RotatingFileHandler('npm_analyzer.log', maxBytes=5*1024*1024, backupCount=2),
         logging.StreamHandler()
     ]
 )
 logger = logging.getLogger(__name__)
-# CRITICAL FIXES: Request Cancellation & Enhanced Cache
-# ============================================================================
-
-
-# ============================================================================
-# CONSTANTS - Extracted from magic numbers for maintainability
-# ============================================================================
-
-# Logging Configuration
-MAX_LOG_SIZE_MB = 5
-MAX_LOG_BACKUPS = 3
-MAX_ERROR_MSG_LENGTH = 50
-
-# Network & Performance
-DEFAULT_MAX_CONCURRENT_REQUESTS = 40
-DEFAULT_TIMEOUT_SECONDS = 30
-DEFAULT_PAGE_SIZE = 250
-PROGRESS_BAR_COMPLETE = 100
-
-# UI Configuration
-DEFAULT_WINDOW_WIDTH = 1400
-DEFAULT_WINDOW_HEIGHT = 900
-MIN_WINDOW_WIDTH = 1200
-MIN_WINDOW_HEIGHT = 700
-
-# Cache Configuration
-DEFAULT_CACHE_TTL_DAYS = 7
-MAX_CACHE_SIZE_MB = 100
-
-# Search Configuration
-DEFAULT_SEARCH_RESULTS = 100
-MIN_SEARCH_RESULTS = 10
-MAX_SEARCH_RESULTS = 1000
-
-# Tree Widget Configuration
-TREE_ROW_HEIGHT = 25
-TREE_HEADING_HEIGHT = 30
-
-# Color Thresholds
-SIZE_WARNING_MB = 10
-SIZE_CRITICAL_MB = 50
-AGE_WARNING_DAYS = 365
-AGE_CRITICAL_DAYS = 730
-
-class RequestToken:
-    """Token system for cancellable requests - FIX FOR RACE CONDITIONS"""
-    def __init__(self):
-        self._cancelled = False
-        self._lock = threading.Lock()
-    
-    def cancel(self):
-        with self._lock:
-            self._cancelled = True
-    
-    def is_cancelled(self):
-        with self._lock:
-            return self._cancelled
-    
-    def check_cancelled(self):
-        if self.is_cancelled():
-            raise RequestCancelledException("Request was cancelled")
-
-class RequestCancelledException(Exception):
-    """Exception raised when request is cancelled"""
-    pass
-
-class CancellableRequestManager:
-    """Manages cancellable async requests to prevent race conditions"""
-    def __init__(self):
-        self._active_requests = {}
-        self._lock = threading.Lock()
-    
-    def start_request(self, request_id):
-        with self._lock:
-            if request_id in self._active_requests:
-                self._active_requests[request_id].cancel()
-            token = RequestToken()
-            self._active_requests[request_id] = token
-            return token
-    
-    def finish_request(self, request_id):
-        with self._lock:
-            if request_id in self._active_requests:
-                del self._active_requests[request_id]
-    
-    def cancel_all(self):
-        with self._lock:
-            for token in self._active_requests.values():
-                token.cancel()
-            self._active_requests.clear()
-
-
-
-class SafeUIOperation:
-    """Context manager for safe UI operations with guaranteed cleanup - PREVENTS UI FREEZING"""
-    def __init__(self, root, status_var, progress_bar=None, loading_message="Processing...", success_message="Complete"):
-        self.root = root
-        self.status_var = status_var
-        self.progress_bar = progress_bar
-        self.loading_message = loading_message
-        self.success_message = success_message
-        self._original_cursor = None
-        self._entered = False
-    
-    def __enter__(self):
-        self._original_cursor = self.root.cget("cursor")
-        self.root.config(cursor="watch")
-        self.status_var.set(self.loading_message)
-        if self.progress_bar:
-            self.progress_bar["value"] = 0
-        self._entered = True
-        return self
-    
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if self._entered:
-            self.root.config(cursor=self._original_cursor or "")
-            if self.progress_bar:
-                self.progress_bar["value"] = 100
-            if exc_type is None:
-                self.status_var.set(self.success_message)
-            else:
-                self.status_var.set(f"Error: {str(exc_val)[:MAX_ERROR_MSG_LENGTH]}...")
-                logger.error(f"UI operation failed: {exc_val}", exc_info=True)
-        return False
-
-def safe_ui_thread(root, status_var=None, progress_bar=None):
-    """Decorator for thread functions that ensures UI cleanup"""
-    def decorator(func):
-        def wrapper(*args, **kwargs):
-            cleanup_done = False
-            try:
-                result = func(*args, **kwargs)
-                return result
-            except Exception as e:
-                logger.error(f"Thread error in {func.__name__}: {e}", exc_info=True)
-                if root and hasattr(root, 'after'):
-                    root.after(0, lambda: messagebox.showerror("Error", f"Operation failed: {str(e)[:100]}"))
-                raise
-            finally:
-                if not cleanup_done and root and hasattr(root, 'after'):
-                    root.after(0, lambda: root.config(cursor=""))
-                    if progress_bar and hasattr(progress_bar, 'configure'):
-                        root.after(0, lambda: progress_bar.configure(value=PROGRESS_BAR_COMPLETE))
-                    if status_var:
-                        root.after(0, lambda: status_var.set("Ready"))
-                    cleanup_done = True
-        return wrapper
-    return decorator
-
-# ============================================================================
-# CRITICAL FIXES INTEGRATED
-# ============================================================================
-
 
 # Configuration constants
 CACHE_DB = "npm_cache.db"
@@ -906,7 +753,7 @@ class CacheManager:
             self.conn = sqlite3.connect(
                 self.db_path,
                 check_same_thread=False,
-                timeout=DEFAULT_TIMEOUT_SECONDS,
+                timeout=30,
                 isolation_level=None  # Auto-commit mode
             )
             self.conn.row_factory = sqlite3.Row
@@ -1271,8 +1118,7 @@ class CacheManager:
             try:
                 self.conn.execute("PRAGMA optimize")
                 self.conn.close()
-            except Exception as e:
-                logger.warning(f"Operation failed: {e}")
+            except:
                 pass
             self.conn = None
 
@@ -1436,8 +1282,7 @@ class SearchHistoryManager:
             try:
                 self.conn.execute("PRAGMA optimize")
                 self.conn.close()
-            except Exception as e:
-                logger.warning(f"Operation failed: {e}")
+            except:
                 pass
             self.conn = None
 
@@ -1531,7 +1376,6 @@ class NPMClient:
                         file_count = int(lines[1].strip())
                         return file_count, size
                     except ValueError:
-                        logger.warning(f"Validation error at line {line_num}: {e}")
                         pass
         except Exception as e:
             logger.error(f"Error getting file info from npm view: {e}")
@@ -2068,131 +1912,114 @@ class NPMClient:
         total_retrieved = 0
 
         def fetch_page():
-            """FIXED: Enhanced with proper error handling and resource management"""
             nonlocal from_value, total_retrieved
-            
-            try:
-                while len(all_packages) < max_results:
-                    try:
-                        params = {
-                            'text': query,
-                            'size': page_size,
-                            'from': from_value,
-                            'quality': 0.3
-                        }
 
-                        # Update status if callback provided
-                        if progress_callback:
-                            progress_callback(len(all_packages), 0, max_results)
+            while len(all_packages) < max_results:
+                params = {
+                    "text": query,
+                    "size": page_size,
+                    "from": from_value
+                }
 
-                        response = self.session.get(
-                            f"{self.registry_url}/-/v1/search",
-                            params=params,
-                            timeout=DEFAULT_TIMEOUT_SECONDS
-                        )
-                        response.raise_for_status()
-                        data = response.json()
+                try:
+                    response = self._make_request(self.search_url, params=params)
+                    if not response:
+                        break
 
-                        if not data.get('objects'):
-                            break
+                    data = response.json()
+                    results = data.get('objects', [])
 
-                        if fetch_details:
-                            # Fetch full details for each package concurrently
-                            futures = []
-                            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-                                for obj in data['objects']:
-                                    if len(all_packages) >= max_results:
-                                        break
+                    if not results:
+                        break
 
-                                    package_name = obj['package']['name']
-                                    if package_name not in all_packages:
-                                        futures.append(
-                                            executor.submit(
-                                                self.get_comprehensive_data,
-                                                package_name
-                                            )
-                                        )
+                    # Process results in parallel
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=min(10, self.concurrency)) as executor:
+                        futures = []
 
-                            for future in concurrent.futures.as_completed(futures):
-                                if len(all_packages) >= max_results:
-                                    break
+                        for result in results:
+                            pkg_data = result.get('package', {})
+                            package_name = pkg_data.get('name', '')
 
+                            if not package_name or package_name in all_packages:
+                                continue
+
+                            if fetch_details:
+                                futures.append(executor.submit(self.get_comprehensive_data, package_name))
+                            else:
+                                # Create minimal package info for search results
+                                version = pkg_data.get('version', 'latest')
+                                description = pkg_data.get('description', '')
+
+                                # Get basic stats
+                                downloads = 0
                                 try:
-                                    pkg = future.result()
-                                    if not pkg:
-                                        continue
+                                    stats_url = f"https://api.npmjs.org/downloads/point/last-week/{package_name}"
+                                    stats_response = self._make_request(stats_url)
+                                    if stats_response:
+                                        downloads = stats_response.json().get('downloads', 0)
+                                except:
+                                    pass
 
-                                    # Apply filters
-                                    skip_package = False
+                                # Get dependents count
+                                dependents_count = 0
+                                try:
+                                    dependents_count = self._get_dependents_count(package_name)
+                                except:
+                                    pass
 
-                                    if size_min:
-                                        size_bytes = self._parse_size_to_bytes(pkg.size_unpacked)
-                                        if size_bytes is not None and size_bytes < min_bytes:
-                                            skip_package = True
+                                # Get dependencies count
+                                dependencies_count = 0
+                                try:
+                                    registry_url = f"https://registry.npmjs.org/{package_name}"
+                                    registry_response = self._make_request(registry_url)
+                                    if registry_response:
+                                        registry_data = registry_response.json()
+                                        latest_version = registry_data.get('dist-tags', {}).get('latest', '')
+                                        if latest_version and latest_version in registry_data.get('versions', {}):
+                                            version_info = registry_data['versions'][latest_version]
+                                            dependencies = version_info.get('dependencies', {})
+                                            dependencies_count = len(dependencies) if isinstance(dependencies, dict) else 0
+                                except:
+                                    pass
 
-                                    if not skip_package and date_filter:
-                                        try:
-                                            if pkg.modified_date != 'N/A' and pkg.modified_date != 'Unknown':
-                                                pkg_date = dateutil.parser.parse(pkg.modified_date)
-                                                if pkg_date < date_filter:
-                                                    skip_package = True
-                                        except:
-                                            skip_package = True
+                                # Get last publish date
+                                last_publish = 'Unknown'
+                                try:
+                                    registry_url = f"https://registry.npmjs.org/{package_name}"
+                                    registry_response = self._make_request(registry_url)
+                                    if registry_response:
+                                        registry_data = registry_response.json()
+                                        latest_version = registry_data.get('dist-tags', {}).get('latest', '')
+                                        if latest_version and latest_version in registry_data.get('time', {}):
+                                            date_str = registry_data['time'][latest_version]
+                                            last_publish = self._format_publish_date(
+                                                dateutil.parser.parse(date_str).timestamp() * 1000
+                                            )
+                                except:
+                                    pass
 
-                                    if skip_package:
-                                        continue
+                                # Get size info
+                                size_unpacked = 'Unknown'
+                                file_count = 'Unknown'
+                                try:
+                                    size, files = self._get_file_info_from_npm_view(package_name, version)
+                                    if size is not None:
+                                        size_unpacked = self._format_size(size)
+                                    if files is not None:
+                                        file_count = str(files)
+                                except:
+                                    pass
 
-                                    all_packages[pkg.name] = pkg
-                                    total_retrieved += 1
-
-                                    # Update progress
-                                    if progress_callback:
-                                        progress_callback(
-                                            len(all_packages),
-                                            min(max_results, total_retrieved),
-                                            max_results
-                                        )
-
-                                    # Update UI with the new package
-                                    if result_callback:
-                                        result_callback([pkg])
-                                
-                                except Exception as e:
-                                    logger.warning(f"Error processing future result: {e}")
-                                    continue
-                        
-                        else:
-                            # Just use basic info from search results
-                            for obj in data['objects']:
-                                if len(all_packages) >= max_results:
-                                    break
-
-                                pkg_data = obj['package']
-                                package_name = pkg_data['name']
-
-                                if package_name in all_packages:
-                                    continue
-
-                                # Create basic PackageInfo
                                 pkg = PackageInfo(
                                     name=package_name,
-                                    version=pkg_data.get('version', 'Unknown'),
-                                    description=pkg_data.get('description', 'No description'),
-                                    keywords=pkg_data.get('keywords', []),
-                                    author=pkg_data.get('author', {}).get('name', 'Unknown'),
-                                    license=pkg_data.get('license', 'Unknown'),
-                                    homepage=pkg_data.get('links', {}).get('homepage', ''),
-                                    repository=pkg_data.get('links', {}).get('repository', ''),
-                                    npm_url=pkg_data.get('links', {}).get('npm', ''),
-                                    modified_date=pkg_data.get('date', 'Unknown'),
-                                    maintainers=[],
-                                    dependencies={},
-                                    dev_dependencies={},
-                                    download_count='N/A',
-                                    weekly_downloads='N/A',
-                                    size_unpacked='Unknown',
-                                    file_count=0,
-                                    last_fetched=time.time()
+                                    version=version,
+                                    description=description,
+                                    downloads_last_week=downloads,
+                                    dependents_count=dependents_count,
+                                    dependencies_count=dependencies_count,
+                                    last_publish=last_publish,
+                                    size_unpacked=size_unpacked,
+                                    file_count=file_count
                                 )
 
                                 all_packages[package_name] = pkg
@@ -2210,26 +2037,56 @@ class NPMClient:
                                 if result_callback:
                                     result_callback([pkg])
 
-                        from_value += page_size
-                    
-                    except requests.RequestException as e:
-                        logger.error(f"Request error fetching page: {e}")
-                        break
-                    except Exception as e:
-                        logger.error(f"Error processing page: {e}", exc_info=True)
-                        break
-            
-            except Exception as e:
-                logger.error(f"Critical error in fetch_page: {e}", exc_info=True)
-            
-            finally:
-                # Ensure progress callback gets final update
-                if progress_callback:
-                    try:
-                        progress_callback(len(all_packages), len(all_packages), max_results)
-                    except Exception as e:
-                        logger.error(f"Error in progress callback: {e}")
+                        if fetch_details:
+                            for future in concurrent.futures.as_completed(futures):
+                                if len(all_packages) >= max_results:
+                                    break
 
+                                pkg = future.result()
+                                if not pkg:
+                                    continue
+
+                                # Apply filters
+                                skip_package = False
+
+                                if size_min:
+                                    size_bytes = self._parse_size_to_bytes(pkg.size_unpacked)
+                                    if size_bytes is not None and size_bytes < min_bytes:
+                                        skip_package = True
+
+                                if not skip_package and date_filter:
+                                    try:
+                                        if pkg.modified_date != 'N/A' and pkg.modified_date != 'Unknown':
+                                            pkg_date = dateutil.parser.parse(pkg.modified_date)
+                                            if pkg_date < date_filter:
+                                                skip_package = True
+                                    except:
+                                        skip_package = True
+
+                                if skip_package:
+                                    continue
+
+                                all_packages[package_name] = pkg
+                                total_retrieved += 1
+
+                                # Update progress
+                                if progress_callback:
+                                    progress_callback(
+                                        len(all_packages),
+                                        min(max_results, total_retrieved),
+                                        max_results
+                                    )
+
+                                # Update UI with the new package
+                                if result_callback:
+                                    result_callback([pkg])
+
+                    from_value += page_size
+                except Exception as e:
+                    logger.error(f"Error fetching page: {e}")
+                    break
+
+        # Run fetch in a separate thread
         fetch_thread = threading.Thread(target=fetch_page, daemon=True)
         fetch_thread.start()
         fetch_thread.join()
@@ -2440,17 +2297,17 @@ def find_npm_executable() -> Optional[str]:
         ]
     elif IS_MAC:
         common_paths = [
-            os.path.join('/usr', 'local', 'bin', 'npm'),
+            '/usr/local/bin/npm',
             '/opt/homebrew/bin/npm',
             os.path.expanduser('~/.npm/bin/npm'),
             os.path.expanduser('~/node_modules/.bin/npm'),
             os.path.expanduser('~/.nvm/versions/node/*/bin/npm'),
-            os.path.join('/usr', 'local', 'opt', 'node', 'bin', 'npm'),
+            '/usr/local/opt/node/bin/npm',
         ]
     elif IS_LINUX:
         common_paths = [
-            os.path.join('/usr', 'bin', 'npm'),
-            os.path.join('/usr', 'local', 'bin', 'npm'),
+            '/usr/bin/npm',
+            '/usr/local/bin/npm',
             os.path.expanduser('~/.npm/bin/npm'),
             os.path.expanduser('~/node_modules/.bin/npm'),
             os.path.expanduser('~/.nvm/versions/node/*/bin/npm'),
@@ -2662,11 +2519,7 @@ class FileTreeViewer:
         if not selection:
             return
 
-        try:
-            item = selection[0]
-        except (IndexError, TypeError) as e:
-            logger.warning(f"Invalid tree selection: {e}")
-            return
+        item = selection[0]
         item_text = self.tree.item(item, "text")
 
         # Check if it's a file
@@ -2867,13 +2720,6 @@ class NPMAnalyzerApp:
         self.cache = CacheManager(CACHE_DB, self.settings.get_int('General', 'cache_ttl_days', CACHE_TTL_DAYS))
         self.search_history = SearchHistoryManager(SEARCH_HISTORY_DB)
         self.client = NPMClient(self.cache, self.settings)
-
-        # CRITICAL FIX: Initialize request cancellation manager to prevent race conditions
-        self.request_manager = CancellableRequestManager()
-        
-        # Track active requests to prevent memory leaks
-        self._active_fetch_thread = None
-        self._fetch_lock = threading.Lock()
 
         # Set download directory from settings
         self.client.download_dir = self.settings.get_download_dir()
@@ -3574,11 +3420,7 @@ TTL: {self.cache.ttl_days} days"""
     def _toggle_selection(self, event):
         selection = self.results_tree.selection()
         if selection:
-            try:
-                item = selection[0]
-            except (IndexError, TypeError) as e:
-                logger.warning(f"Invalid search tree selection: {e}")
-                return
+            item = selection[0]
             icon = self.results_tree.item(item, "text")
             self.results_tree.item(item, text="[X]" if icon == "[ ]" else "[ ]")
 
@@ -3742,7 +3584,7 @@ TTL: {self.cache.ttl_days} days"""
                 logger.error(f"Search error: {e}")
                 self.root.after(0, lambda: messagebox.showerror("Search Error", str(e)))
             finally:
-                self.root.after(0, lambda: self.progress.configure(value=PROGRESS_BAR_COMPLETE))
+                self.root.after(0, lambda: self.progress.configure(value=100))
                 self.root.after(0, lambda: self.root.config(cursor=""))
                 self.root.after(0, lambda: self.stop_btn.pack_forget())
                 self.is_searching = False
@@ -3797,11 +3639,7 @@ TTL: {self.cache.ttl_days} days"""
         if not selection:
             return
 
-        try:
-            item = selection[0]
-        except (IndexError, TypeError) as e:
-            logger.warning(f"Invalid package selection: {e}")
-            return
+        item = selection[0]
         values = self.results_tree.item(item, "values")
         if values:
             package_name = values[1]
@@ -3833,11 +3671,7 @@ TTL: {self.cache.ttl_days} days"""
             if values:
                 package_name = values[1]
                 if package_name:
-                    try:
-                        webbrowser.open(f"https://www.npmjs.com/package/{package_name}")
-                    except Exception as e:
-                        logger.error(f"Failed to open browser: {e}")
-                        messagebox.showerror("Error", f"Could not open browser: {e}")
+                    webbrowser.open(f"https://www.npmjs.com/package/{package_name}")
 
     def _display_package(self, pkg: PackageInfo):
         """Display package details with proper markdown rendering"""
@@ -4174,7 +4008,7 @@ TTL: {self.cache.ttl_days} days"""
                 logger.error(f"Download error: {str(e)}")
                 self.root.after(0, lambda: messagebox.showerror("Download Error", str(e)))
             finally:
-                self.root.after(0, lambda: self.progress.configure(value=PROGRESS_BAR_COMPLETE))
+                self.root.after(0, lambda: self.progress.configure(value=100))
                 self.root.after(0, lambda: self.root.config(cursor=""))
 
         threading.Thread(target=do_download, daemon=True).start()
@@ -4184,102 +4018,38 @@ TTL: {self.cache.ttl_days} days"""
             self.open_url(f"https://www.npmjs.com/package/{self.current_package}")
 
     def open_repo(self):
-        """Open repository URL - FIXED: Proper error handling and UI feedback"""
         if self.current_package:
-            # Capture immutable copy to prevent race conditions
-            package_name = self.current_package
-            self.status_var.set(f"Loading repository for {self.current_package}...")
-            self.root.config(cursor="watch")
-            
-            @safe_ui_thread(self.root, self.status_var)
             def fetch_repo():
                 try:
-                    # Fetch package data
-                    pkg = self.client.get_comprehensive_data(package_name)
-                    
+                    pkg = self.client.get_comprehensive_data(self.current_package)
                     if pkg and pkg.repository:
-                        # Validate URL before opening
-                        try:
-                            response = requests.head(pkg.repository, timeout=5, allow_redirects=True)
-                            response.raise_for_status()
-                            
-                            # URL is valid, open it
-                            self.root.after(0, lambda: self.open_url(pkg.repository))
-                            self.root.after(0, lambda: self.status_var.set(f"Opened repository for {self.current_package}"))
-                        
-                        except requests.RequestException as e:
-                            logger.warning(f"Repository URL validation failed: {e}")
-                            # Still try to open, but warn user
-                            self.root.after(0, lambda: self.open_url(pkg.repository))
-                            self.root.after(0, lambda: self.status_var.set("Repository URL may be invalid"))
-                    
+                        self.root.after(0, lambda: self.open_url(pkg.repository))
                     else:
                         self.root.after(0, lambda: messagebox.showinfo(
                             "No Repository",
-                            f"No repository URL found for {self.current_package}"
+                            "No repository URL found"
                         ))
-                        self.root.after(0, lambda: self.status_var.set("No repository found"))
-                
                 except Exception as e:
-                    logger.error(f"Error opening repository: {e}", exc_info=True)
-                    self.root.after(0, lambda: messagebox.showerror(
-                        "Error",
-                        f"Failed to load repository: {str(e)[:100]}"
-                    ))
-                
-                finally:
-                    self.root.after(0, lambda: self.root.config(cursor=""))
-            
-            threading.Thread(target=fetch_repo, daemon=True, name=f"FetchRepo-{self.current_package}").start()
+                    logger.error(f"Error opening repository: {e}")
+
+            threading.Thread(target=fetch_repo, daemon=True).start()
 
     def open_homepage(self):
-        """Open homepage URL - FIXED: Proper error handling and UI feedback"""
         if self.current_package:
-            # Capture immutable copy to prevent race conditions
-            package_name = self.current_package
-            self.status_var.set(f"Loading homepage for {self.current_package}...")
-            self.root.config(cursor="watch")
-            
-            @safe_ui_thread(self.root, self.status_var)
             def fetch_homepage():
                 try:
-                    # Fetch package data
-                    pkg = self.client.get_comprehensive_data(package_name)
-                    
+                    pkg = self.client.get_comprehensive_data(self.current_package)
                     if pkg and pkg.homepage:
-                        # Validate URL before opening
-                        try:
-                            response = requests.head(pkg.homepage, timeout=5, allow_redirects=True)
-                            response.raise_for_status()
-                            
-                            # URL is valid, open it
-                            self.root.after(0, lambda: self.open_url(pkg.homepage))
-                            self.root.after(0, lambda: self.status_var.set(f"Opened homepage for {self.current_package}"))
-                        
-                        except requests.RequestException as e:
-                            logger.warning(f"Homepage URL validation failed: {e}")
-                            # Still try to open, but warn user
-                            self.root.after(0, lambda: self.open_url(pkg.homepage))
-                            self.root.after(0, lambda: self.status_var.set("Homepage URL may be invalid"))
-                    
+                        self.root.after(0, lambda: self.open_url(pkg.homepage))
                     else:
                         self.root.after(0, lambda: messagebox.showinfo(
                             "No Homepage",
-                            f"No homepage URL found for {self.current_package}"
+                            "No homepage URL found"
                         ))
-                        self.root.after(0, lambda: self.status_var.set("No homepage found"))
-                
                 except Exception as e:
-                    logger.error(f"Error opening homepage: {e}", exc_info=True)
-                    self.root.after(0, lambda: messagebox.showerror(
-                        "Error",
-                        f"Failed to load homepage: {str(e)[:100]}"
-                    ))
-                
-                finally:
-                    self.root.after(0, lambda: self.root.config(cursor=""))
-            
-            threading.Thread(target=fetch_homepage, daemon=True, name=f"FetchHomepage-{self.current_package}").start()
+                    logger.error(f"Error opening homepage: {e}")
+
+            threading.Thread(target=fetch_homepage, daemon=True).start()
 
     def open_url(self, url: str):
         """Open a URL in the default browser"""
@@ -4296,60 +4066,33 @@ TTL: {self.cache.ttl_days} days"""
         messagebox.showinfo("Settings", "Settings dialog would open here")
 
     def _on_file_tree_select(self, package_name: str):
-        """Handle file tree selection - FIXED: Prevents race conditions"""
-        if package_name == self.current_package:
-            return  # Already displaying this package
-        
-        # Start new request, cancelling any existing one
-        token = self.request_manager.start_request(f"display_{package_name}")
-        
-        self.current_package = package_name
-        self.root.config(cursor="watch")
-        self.status_var.set(f"Loading: {package_name}")
-        
-        @safe_ui_thread(self.root, self.status_var)
-        def fetch():
-            try:
-                # Check if cancelled before starting
-                token.check_cancelled()
-                
-                # Fetch package data
-                pkg = self.client.get_comprehensive_data(package_name)
-                
-                # Check if cancelled after fetch
-                token.check_cancelled()
-                
-                if pkg:
-                    self.root.after(0, lambda: self._display_package(pkg))
-                else:
-                    self.root.after(0, lambda: messagebox.showinfo(
-                        "Not Found", f"Package '{package_name}' not found"))
-            
-            except RequestCancelledException:
-                logger.debug(f"Display request cancelled for {package_name}")
-            
-            except Exception as e:
-                logger.error(f"Error loading package: {e}", exc_info=True)
-                self.root.after(0, lambda: messagebox.showerror("Error", str(e)))
-            
-            finally:
-                self.request_manager.finish_request(f"display_{package_name}")
-                self.root.after(0, lambda: self.root.config(cursor=""))
-                self.root.after(0, lambda: self.status_var.set("Ready"))
-        
-        threading.Thread(target=fetch, daemon=True, name=f"Fetch-{package_name}").start()
+        """Handle file tree selection"""
+        if package_name != self.current_package:
+            self.current_package = package_name
+            self.root.config(cursor="watch")
+            self.status_var.set(f"Loading: {package_name}")
+
+            def fetch():
+                try:
+                    pkg = self.client.get_comprehensive_data(package_name)
+                    if pkg:
+                        self.root.after(0, lambda: self._display_package(pkg))
+                except Exception as e:
+                    logger.error(f"Error loading package: {e}")
+                    self.root.after(0, lambda: messagebox.showerror("Error", str(e)))
+                finally:
+                    self.root.after(0, lambda: self.root.config(cursor=""))
+                    self.root.after(0, lambda: self.status_var.set("Ready"))
+
+            threading.Thread(target=fetch, daemon=True).start()
 
     def on_close(self):
-        """Clean up when closing the application - FIXED: Cancels all pending requests"""
+        """Clean up when closing the application"""
         try:
-            # CRITICAL FIX: Cancel all pending requests before closing
-            self.request_manager.cancel_all()
-            logger.info("Cancelled all pending requests")
-            
             self.cache.close()
             self.search_history.close()
-        except Exception as e:
-            logger.error(f"Error during cleanup: {e}")
+        except:
+            pass
 
         self.root.destroy()
 

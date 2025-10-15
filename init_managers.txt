@@ -1,0 +1,7 @@
+
+        # CRITICAL FIX: Initialize request cancellation manager to prevent race conditions
+        self.request_manager = CancellableRequestManager()
+        
+        # Track active requests to prevent memory leaks
+        self._active_fetch_thread = None
+        self._fetch_lock = threading.Lock()

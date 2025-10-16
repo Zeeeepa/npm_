@@ -1,6 +1,7 @@
 README.md
 pyproject.toml
 src/npm_discovery/__init__.py
+src/npm_discovery/config.py
 src/npm_discovery.egg-info/PKG-INFO
 src/npm_discovery.egg-info/SOURCES.txt
 src/npm_discovery.egg-info/dependency_links.txt
@@ -14,3 +15,4 @@ src/npm_discovery/ui/__init__.py
 src/npm_discovery/ui/views/__init__.py
 src/npm_discovery/ui/widgets/__init__.py
 src/npm_discovery/utils/__init__.py
+src/npm_discovery/utils/http.py

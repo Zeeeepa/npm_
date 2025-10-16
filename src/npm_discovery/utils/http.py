@@ -3,7 +3,6 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from typing import Dict, Any, Optional
-from npm_discovery.config import get_config
 
 
 class HttpError(Exception):
@@ -18,7 +17,12 @@ class RateLimitError(HttpError):
     pass
 
 
+# Global session instance (lazy-initialized)
+_session: Optional[requests.Session] = None
+
+
 def create_session(
+    user_agent: str = None,
     max_retries: int = 3,
     backoff_factor: float = 0.5,
     status_forcelist: tuple = (429, 500, 502, 503, 504)
@@ -26,6 +30,7 @@ def create_session(
     """Create a requests session with retry logic.
     
     Args:
+        user_agent: Custom user agent string (uses default if None).
         max_retries: Maximum number of retry attempts.
         backoff_factor: Backoff factor for exponential backoff.
         status_forcelist: HTTP status codes that trigger a retry.
@@ -47,12 +52,38 @@ def create_session(
     session.mount("https://", adapter)
     
     # Set default headers
-    config = get_config()
-    session.headers.update({
-        "User-Agent": config.user_agent
-    })
+    if user_agent is None:
+        user_agent = (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/91.0.4472.124 Safari/537.36"
+        )
+    
+    session.headers.update({"User-Agent": user_agent})
     
     return session
+
+
+def get_session() -> requests.Session:
+    """Get or create the global HTTP session with configuration.
+    
+    Lazy-initializes session with config from environment.
+    
+    Returns:
+        Configured requests.Session instance.
+    """
+    global _session
+    if _session is None:
+        from npm_discovery.config import get_config
+        config = get_config()
+        _session = create_session(user_agent=config.user_agent)
+    return _session
+
+
+def reset_session() -> None:
+    """Reset the global session (useful for testing)."""
+    global _session
+    _session = None
 
 
 def get_json(
@@ -69,7 +100,7 @@ def get_json(
         params: Query parameters.
         headers: Additional headers.
         timeout: Request timeout in seconds (uses config default if None).
-        session: Requests session (creates new one if None).
+        session: Requests session (uses global session if None).
         
     Returns:
         Parsed JSON response as dict.
@@ -78,9 +109,12 @@ def get_json(
         HttpError: If request fails.
         RateLimitError: If rate limit is hit (HTTP 429).
     """
-    config = get_config()
-    timeout = timeout or config.request_timeout
-    session = session or create_session()
+    if session is None:
+        session = get_session()
+    
+    if timeout is None:
+        from npm_discovery.config import get_config
+        timeout = get_config().request_timeout
     
     try:
         response = session.get(url, params=params, headers=headers, timeout=timeout)
@@ -117,7 +151,7 @@ def get_text(
         params: Query parameters.
         headers: Additional headers.
         timeout: Request timeout in seconds (uses config default if None).
-        session: Requests session (creates new one if None).
+        session: Requests session (uses global session if None).
         
     Returns:
         Response text.
@@ -126,9 +160,12 @@ def get_text(
         HttpError: If request fails.
         RateLimitError: If rate limit is hit (HTTP 429).
     """
-    config = get_config()
-    timeout = timeout or config.request_timeout
-    session = session or create_session()
+    if session is None:
+        session = get_session()
+    
+    if timeout is None:
+        from npm_discovery.config import get_config
+        timeout = get_config().request_timeout
     
     try:
         response = session.get(url, params=params, headers=headers, timeout=timeout)

@@ -260,9 +260,7 @@ class MarkdownRenderer:
         # Inline code `code`
         text = re.sub(r'`(.*?)`', lambda m: f'`{m.group(1)}`', text)
         # Links [text](url)
-        text = re.sub(r'$$
-([^
-$$]+)\]$([^)]+)$', lambda m: f'[{m.group(1)}]({m.group(2)})', text)
+        text = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', lambda m: f'[{m.group(1)}]({m.group(2)})', text)
         return text
     def _parse_html(self, element, widget, tag_stack=None, in_code_block=False):
         """Recursively parse HTML elements and apply tags"""

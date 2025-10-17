@@ -5,6 +5,10 @@ Loads settings from environment variables with sane defaults.
 import os
 from pathlib import Path
 from typing import Optional
+from dotenv import load_dotenv
+
+# Load .env file if it exists
+load_dotenv()
 
 
 class Config:
@@ -113,4 +117,3 @@ def reset_config() -> None:
     """Reset the global configuration instance (useful for testing)."""
     global _config
     _config = None
-

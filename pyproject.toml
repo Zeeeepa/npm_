@@ -35,6 +35,8 @@ dependencies = [
     "humanize>=4.9.0",
     "diskcache>=5.6.0",
     "lxml>=5.0.0",  # For BeautifulSoup XML parsing
+    "python-dotenv>=1.0.0",  # For .env file support
+    "aiohttp>=3.9.0",  # For async HTTP requests
 ]
 
 [project.optional-dependencies]

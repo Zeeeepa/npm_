@@ -50,7 +50,7 @@ dev = [
 ]
 
 [project.scripts]
-npm-discovery = "npm_discovery.ui.app:main"
+npm-tool = "npm.ui.app:main"
 
 [project.urls]
 Homepage = "https://github.com/Zeeeepa/npm_"
@@ -93,4 +93,3 @@ warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false  # Enable gradually
 ignore_missing_imports = true  # Until we add stubs for all deps
-

@@ -1,7 +1,7 @@
 """Unit tests for configuration module."""
 import pytest
 from pathlib import Path
-from npm_discovery.config import Config, get_config, reset_config
+from npm.config import Config, get_config, reset_config
 
 
 class TestConfig:

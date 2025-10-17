@@ -1,7 +1,7 @@
 """Unit tests for data models."""
 import pytest
 import json
-from npm_discovery.models import PackageInfo, SearchResult
+from npm.models import PackageInfo, SearchResult
 
 
 class TestPackageInfo:

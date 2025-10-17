@@ -130,6 +130,6 @@ def sample_libraries_io_response():
 def reset_config():
     """Reset global config after each test."""
     yield
-    from npm_discovery.config import reset_config
+    from npm.config import reset_config
     reset_config()
 

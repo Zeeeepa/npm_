@@ -2,8 +2,8 @@
 import pytest
 import time
 from pathlib import Path
-from npm_discovery.services.cache import CacheManager
-from npm_discovery.models import PackageInfo
+from npm.services.cache import CacheManager
+from npm.models import PackageInfo
 
 
 class TestCacheManager:

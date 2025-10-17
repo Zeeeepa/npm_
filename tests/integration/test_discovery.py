@@ -1,17 +1,17 @@
 """Integration tests for discovery service."""
 import pytest
 from unittest.mock import Mock, patch
-from npm_discovery.services.discovery import DiscoveryService
-from npm_discovery.models import PackageInfo, SearchResult
+from npm.services.discovery import DiscoveryService
+from npm.models import PackageInfo, SearchResult
 
 
 class TestDiscoveryService:
     """Test DiscoveryService integration."""
     
-    @patch('npm_discovery.services.discovery.LibrariesIOClient')
-    @patch('npm_discovery.services.discovery.NpmRegistryClient')
-    @patch('npm_discovery.services.discovery.UnpkgClient')
-    @patch('npm_discovery.services.discovery.CacheManager')
+    @patch('npm.services.discovery.LibrariesIOClient')
+    @patch('npm.services.discovery.NpmRegistryClient')
+    @patch('npm.services.discovery.UnpkgClient')
+    @patch('npm.services.discovery.CacheManager')
     def test_search_packages(self, mock_cache, mock_unpkg, mock_npm, mock_libio):
         """Test searching for packages."""
         # Setup mock
@@ -32,10 +32,10 @@ class TestDiscoveryService:
         assert results[0].name == "lodash"
         mock_client.search.assert_called_once()
     
-    @patch('npm_discovery.services.discovery.LibrariesIOClient')
-    @patch('npm_discovery.services.discovery.NpmRegistryClient')
-    @patch('npm_discovery.services.discovery.UnpkgClient')
-    @patch('npm_discovery.services.discovery.CacheManager')
+    @patch('npm.services.discovery.LibrariesIOClient')
+    @patch('npm.services.discovery.NpmRegistryClient')
+    @patch('npm.services.discovery.UnpkgClient')
+    @patch('npm.services.discovery.CacheManager')
     def test_get_package_details_without_cache(self, mock_cache_cls, mock_unpkg, mock_npm_cls, mock_libio):
         """Test fetching package details without cache."""
         # Setup mocks
@@ -62,10 +62,10 @@ class TestDiscoveryService:
         mock_npm.get_package.assert_called_once_with("lodash")
         mock_cache.set.assert_called_once()
     
-    @patch('npm_discovery.services.discovery.LibrariesIOClient')
-    @patch('npm_discovery.services.discovery.NpmRegistryClient')
-    @patch('npm_discovery.services.discovery.UnpkgClient')
-    @patch('npm_discovery.services.discovery.CacheManager')
+    @patch('npm.services.discovery.LibrariesIOClient')
+    @patch('npm.services.discovery.NpmRegistryClient')
+    @patch('npm.services.discovery.UnpkgClient')
+    @patch('npm.services.discovery.CacheManager')
     def test_get_package_details_from_cache(self, mock_cache_cls, mock_unpkg, mock_npm, mock_libio):
         """Test fetching package details from cache."""
         # Setup mock

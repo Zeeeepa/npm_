@@ -1,2 +1,0 @@
-[console_scripts]
-npm-discovery = npm_discovery.ui.app:main

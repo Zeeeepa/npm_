@@ -2,7 +2,7 @@
 import pytest
 from unittest.mock import Mock, patch
 import requests
-from npm_discovery.utils.http import (
+from npm.utils.http import (
     create_session,
     get_session,
     reset_session,
@@ -70,7 +70,7 @@ class TestGetSession:
 class TestGetJson:
     """Test get_json functionality."""
     
-    @patch('npm_discovery.utils.http.get_session')
+    @patch('npm.utils.http.get_session')
     def test_get_json_success(self, mock_get_session, mock_response):
         """Test successful JSON retrieval."""
         test_data = {"key": "value", "number": 42}
@@ -83,7 +83,7 @@ class TestGetJson:
         assert result == test_data
         mock_session.get.assert_called_once()
     
-    @patch('npm_discovery.utils.http.get_session')
+    @patch('npm.utils.http.get_session')
     def test_get_json_with_params(self, mock_get_session, mock_response):
         """Test get_json with query parameters."""
         mock_session = Mock()
@@ -100,7 +100,7 @@ class TestGetJson:
             timeout=30  # Default from config
         )
     
-    @patch('npm_discovery.utils.http.get_session')
+    @patch('npm.utils.http.get_session')
     def test_get_json_rate_limit_error(self, mock_get_session, mock_response):
         """Test get_json raises RateLimitError on HTTP 429."""
         mock_session = Mock()
@@ -110,7 +110,7 @@ class TestGetJson:
         with pytest.raises(RateLimitError, match="Rate limit exceeded"):
             get_json("https://example.com/api")
     
-    @patch('npm_discovery.utils.http.get_session')
+    @patch('npm.utils.http.get_session')
     def test_get_json_http_error(self, mock_get_session, mock_response):
         """Test get_json raises HttpError on HTTP errors."""
         mock_session = Mock()
@@ -121,7 +121,7 @@ class TestGetJson:
         with pytest.raises(HttpError):
             get_json("https://example.com/api")
     
-    @patch('npm_discovery.utils.http.get_session')
+    @patch('npm.utils.http.get_session')
     def test_get_json_timeout_error(self, mock_get_session):
         """Test get_json raises HttpError on timeout."""
         mock_session = Mock()
@@ -131,7 +131,7 @@ class TestGetJson:
         with pytest.raises(HttpError, match="timeout"):
             get_json("https://example.com/api")
     
-    @patch('npm_discovery.utils.http.get_session')
+    @patch('npm.utils.http.get_session')
     def test_get_json_invalid_json(self, mock_get_session):
         """Test get_json raises HttpError on invalid JSON."""
         mock_session = Mock()
@@ -149,7 +149,7 @@ class TestGetJson:
 class TestGetText:
     """Test get_text functionality."""
     
-    @patch('npm_discovery.utils.http.get_session')
+    @patch('npm.utils.http.get_session')
     def test_get_text_success(self, mock_get_session, mock_response):
         """Test successful text retrieval."""
         test_text = "<html>Hello World</html>"
@@ -162,7 +162,7 @@ class TestGetText:
         assert result == test_text
         mock_session.get.assert_called_once()
     
-    @patch('npm_discovery.utils.http.get_session')
+    @patch('npm.utils.http.get_session')
     def test_get_text_rate_limit_error(self, mock_get_session, mock_response):
         """Test get_text raises RateLimitError on HTTP 429."""
         mock_session = Mock()
@@ -172,7 +172,7 @@ class TestGetText:
         with pytest.raises(RateLimitError):
             get_text("https://example.com/page")
     
-    @patch('npm_discovery.utils.http.get_session')
+    @patch('npm.utils.http.get_session')
     def test_get_text_with_custom_session(self, mock_get_session, mock_response):
         """Test get_text with custom session."""
         custom_session = Mock()

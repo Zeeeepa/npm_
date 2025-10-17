@@ -1,14 +1,14 @@
 """Unit tests for API clients."""
 import pytest
 from unittest.mock import Mock, patch
-from npm_discovery.api import LibrariesIOClient, NpmRegistryClient, UnpkgClient
-from npm_discovery.utils.http import HttpError, RateLimitError
+from npm.api import LibrariesIOClient, NpmRegistryClient, UnpkgClient
+from npm.utils.http import HttpError, RateLimitError
 
 
 class TestLibrariesIOClient:
     """Test LibrariesIOClient."""
     
-    @patch('npm_discovery.api.libraries_io.get_json')
+    @patch('npm.api.libraries_io.get_json')
     def test_search_success(self, mock_get_json):
         """Test successful search."""
         mock_get_json.return_value = [
@@ -28,7 +28,7 @@ class TestLibrariesIOClient:
         assert results[0].name == "lodash"
         assert results[0].stars == 50000
     
-    @patch('npm_discovery.api.libraries_io.get_json')
+    @patch('npm.api.libraries_io.get_json')
     def test_search_rate_limit(self, mock_get_json):
         """Test rate limit handling."""
         mock_get_json.side_effect = RateLimitError("Rate limit exceeded")
@@ -41,7 +41,7 @@ class TestLibrariesIOClient:
 class TestNpmRegistryClient:
     """Test NpmRegistryClient."""
     
-    @patch('npm_discovery.api.npm_registry.get_json')
+    @patch('npm.api.npm_registry.get_json')
     def test_get_package(self, mock_get_json):
         """Test package retrieval."""
         mock_get_json.side_effect = [
@@ -79,7 +79,7 @@ class TestNpmRegistryClient:
 class TestUnpkgClient:
     """Test UnpkgClient."""
     
-    @patch('npm_discovery.api.unpkg.get_json')
+    @patch('npm.api.unpkg.get_json')
     def test_get_file_tree(self, mock_get_json):
         """Test file tree retrieval."""
         mock_get_json.return_value = {
@@ -97,7 +97,7 @@ class TestUnpkgClient:
         assert tree["name"] == "lodash"
         assert tree["file_count"] == 2
     
-    @patch('npm_discovery.api.unpkg.get_text')
+    @patch('npm.api.unpkg.get_text')
     def test_get_file_content(self, mock_get_text):
         """Test file content retrieval."""
         mock_get_text.return_value = "console.log('hello');"

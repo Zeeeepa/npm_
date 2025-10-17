@@ -6,6 +6,8 @@ import logging
 from typing import Optional, List
 from npm_discovery.ui.theme import DarkTheme
 from npm_discovery.ui.widgets import SearchFilters, MarkdownViewer, PackageComparison
+from npm_discovery.ui.keyboard import KeyboardShortcuts
+from npm_discovery.ui.settings import SettingsDialog
 from npm_discovery.services.discovery import DiscoveryService
 from npm_discovery.services.downloader import PackageDownloader
 from npm_discovery.models import SearchResult, PackageInfo
@@ -43,7 +45,33 @@ class NPMDiscoveryApp:
         
         # Build UI
         self._setup_styles()
+        self._create_menu()
         self._create_widgets()
+        self._setup_shortcuts()
+    
+    def _create_menu(self):
+        """Create menu bar."""
+        menubar = tk.Menu(self.root, bg=DarkTheme.BG_SECONDARY, fg=DarkTheme.TEXT)
+        self.root.config(menu=menubar)
+        
+        # File menu
+        file_menu = tk.Menu(menubar, tearoff=0, bg=DarkTheme.BG_SECONDARY, fg=DarkTheme.TEXT)
+        menubar.add_cascade(label="File", menu=file_menu)
+        file_menu.add_command(label="Settings", command=self.show_settings)
+        file_menu.add_separator()
+        file_menu.add_command(label="Exit", command=self.root.quit)
+        
+        # View menu
+        view_menu = tk.Menu(menubar, tearoff=0, bg=DarkTheme.BG_SECONDARY, fg=DarkTheme.TEXT)
+        menubar.add_cascade(label="View", menu=view_menu)
+        view_menu.add_command(label="Cache Statistics", command=self.show_cache_stats)
+        view_menu.add_command(label="Compare Packages", command=self.compare_packages)
+        
+        # Help menu
+        help_menu = tk.Menu(menubar, tearoff=0, bg=DarkTheme.BG_SECONDARY, fg=DarkTheme.TEXT)
+        menubar.add_cascade(label="Help", menu=help_menu)
+        help_menu.add_command(label="Keyboard Shortcuts", command=self.show_shortcuts)
+        help_menu.add_command(label="About", command=self.show_about)
     
     def _setup_styles(self):
         """Configure ttk styles for dark theme."""
@@ -485,6 +513,69 @@ Modified: {package.modified_date}
             f"Package downloaded to:\n{path}"
         )
         self.set_status(f"Downloaded to: {path}")
+    
+    def _setup_shortcuts(self):
+        """Setup keyboard shortcuts."""
+        self.shortcuts = KeyboardShortcuts(self.root)
+        
+        # Register shortcuts
+        self.shortcuts.register('<Control-f>', lambda: self.search_entry.focus())
+        self.shortcuts.register('<Control-r>', self.show_readme)
+        self.shortcuts.register('<Control-t>', self.show_file_tree)
+        self.shortcuts.register('<Control-d>', self.download_package)
+        self.shortcuts.register('<Control-c>', self.add_to_comparison)
+        self.shortcuts.register('<Control-q>', self.root.quit)
+        self.shortcuts.register('<F5>', lambda: self.search_packages(self.search_var.get()))
+        self.shortcuts.register('<Escape>', self._clear_selection)
+    
+    def _clear_selection(self):
+        """Clear current selection."""
+        self.results_listbox.selection_clear(0, tk.END)
+        self.current_package = None
+        self.details_text.delete(1.0, tk.END)
+        self.set_status("Selection cleared")
+    
+    def show_settings(self):
+        """Show settings dialog."""
+        SettingsDialog(self.root)
+    
+    def show_cache_stats(self):
+        """Show cache statistics."""
+        stats = self.service.cache_manager.get_stats()
+        message = f"""Cache Statistics:
+        
+Total Entries: {stats.get('total_entries', 0)}
+Size: {stats.get('size_mb', 0):.2f} MB
+Hit Rate: {stats.get('hit_rate', 0):.1f}%
+
+Cache file: {stats.get('cache_file', 'Unknown')}
+"""
+        messagebox.showinfo("Cache Statistics", message)
+    
+    def show_shortcuts(self):
+        """Show keyboard shortcuts help."""
+        help_text = self.shortcuts.get_help_text()
+        messagebox.showinfo("Keyboard Shortcuts", help_text)
+    
+    def show_about(self):
+        """Show about dialog."""
+        about_text = """NPM Package Discovery Tool
+
+Version: 1.0.0
+
+A powerful tool for discovering, analyzing, and managing NPM packages.
+
+Features:
+• Search packages via Libraries.io
+• Enriched data from NPM Registry
+• File tree browsing via Unpkg
+• Package comparison
+• README viewing
+• Package downloads
+• Dark theme UI
+
+© 2025 - Open Source"""
+        messagebox.showinfo("About NPM Discovery", about_text)
     
     def set_status(self, message: str):
         """Update status bar."""

@@ -5,7 +5,9 @@ import threading
 import logging
 from typing import Optional, List
 from npm_discovery.ui.theme import DarkTheme
+from npm_discovery.ui.widgets import SearchFilters, MarkdownViewer, PackageComparison
 from npm_discovery.services.discovery import DiscoveryService
+from npm_discovery.services.downloader import PackageDownloader
 from npm_discovery.models import SearchResult, PackageInfo
 
 logger = logging.getLogger(__name__)
@@ -21,9 +23,10 @@ class NPMDiscoveryApp:
         self.root.geometry("1200x800")
         self.root.configure(bg=DarkTheme.BG)
         
-        # Service
+        # Services
         try:
             self.service = DiscoveryService()
+            self.downloader = PackageDownloader()
         except ValueError as e:
             messagebox.showerror(
                 "Configuration Error",
@@ -35,6 +38,8 @@ class NPMDiscoveryApp:
         # State
         self.search_results: List[SearchResult] = []
         self.current_package: Optional[PackageInfo] = None
+        self.selected_packages: List[PackageInfo] = []  # For comparison
+        self.current_filters = {}
         
         # Build UI
         self._setup_styles()
@@ -140,10 +145,13 @@ class NPMDiscoveryApp:
         )
         self.details_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
         
-        # File tree button
+        # Action buttons frame
+        btn_frame = tk.Frame(right_frame, bg=DarkTheme.BG_SECONDARY)
+        btn_frame.pack(pady=(0, 10))
+        
         tree_btn = tk.Button(
-            right_frame,
-            text="Show File Tree",
+            btn_frame,
+            text="File Tree",
             command=self.show_file_tree,
             bg=DarkTheme.BG_HOVER,
             fg=DarkTheme.TEXT,
@@ -151,7 +159,43 @@ class NPMDiscoveryApp:
             font=('Arial', 10),
             cursor='hand2'
         )
-        tree_btn.pack(pady=(0, 10), ipadx=15, ipady=5)
+        tree_btn.pack(side=tk.LEFT, padx=5, ipadx=15, ipady=5)
+        
+        readme_btn = tk.Button(
+            btn_frame,
+            text="README",
+            command=self.show_readme,
+            bg=DarkTheme.BG_HOVER,
+            fg=DarkTheme.TEXT,
+            relief=tk.FLAT,
+            font=('Arial', 10),
+            cursor='hand2'
+        )
+        readme_btn.pack(side=tk.LEFT, padx=5, ipadx=15, ipady=5)
+        
+        compare_btn = tk.Button(
+            btn_frame,
+            text="Add to Compare",
+            command=self.add_to_comparison,
+            bg=DarkTheme.BG_HOVER,
+            fg=DarkTheme.TEXT,
+            relief=tk.FLAT,
+            font=('Arial', 10),
+            cursor='hand2'
+        )
+        compare_btn.pack(side=tk.LEFT, padx=5, ipadx=15, ipady=5)
+        
+        download_btn = tk.Button(
+            btn_frame,
+            text="Download",
+            command=self.download_package,
+            bg=DarkTheme.ACCENT,
+            fg=DarkTheme.TEXT,
+            relief=tk.FLAT,
+            font=('Arial', 10, 'bold'),
+            cursor='hand2'
+        )
+        download_btn.pack(side=tk.LEFT, padx=5, ipadx=15, ipady=5)
         
         # Status bar
         self.status_label = ttk.Label(
@@ -326,6 +370,122 @@ Modified: {package.modified_date}
         
         return output
     
+    def show_readme(self):
+        """Show README in markdown viewer."""
+        if not self.current_package:
+            messagebox.showinfo("Info", "Please select a package first")
+            return
+        
+        self.set_status(f"Fetching README for: {self.current_package.name}")
+        
+        def load_readme():
+            try:
+                readme = self.service.get_readme(
+                    self.current_package.name,
+                    self.current_package.version
+                )
+                if readme:
+                    self.root.after(0, lambda: self._display_readme(readme))
+                else:
+                    self.root.after(0, lambda: messagebox.showinfo(
+                        "No README",
+                        f"No README found for {self.current_package.name}"
+                    ))
+            except Exception as e:
+                logger.exception("Failed to load README")
+                self.root.after(0, lambda: self.set_status(f"Error: {e}"))
+        
+        threading.Thread(target=load_readme, daemon=True).start()
+    
+    def _display_readme(self, content: str):
+        """Display README in viewer."""
+        MarkdownViewer(
+            self.root,
+            f"README - {self.current_package.name}",
+            content
+        )
+        self.set_status("README loaded")
+    
+    def add_to_comparison(self):
+        """Add current package to comparison list."""
+        if not self.current_package:
+            messagebox.showinfo("Info", "Please select a package first")
+            return
+        
+        if self.current_package in self.selected_packages:
+            messagebox.showinfo("Info", "Package already in comparison")
+            return
+        
+        self.selected_packages.append(self.current_package)
+        self.set_status(f"Added {self.current_package.name} to comparison ({len(self.selected_packages)} packages)")
+        
+        if len(self.selected_packages) >= 2:
+            result = messagebox.askyesno(
+                "Compare Packages",
+                f"Compare {len(self.selected_packages)} packages now?"
+            )
+            if result:
+                self.compare_packages()
+    
+    def compare_packages(self):
+        """Show package comparison window."""
+        if len(self.selected_packages) < 2:
+            messagebox.showinfo("Info", "Add at least 2 packages to compare")
+            return
+        
+        PackageComparison(self.root, self.selected_packages)
+        self.selected_packages.clear()
+        self.set_status("Comparison displayed")
+    
+    def download_package(self):
+        """Download current package."""
+        if not self.current_package:
+            messagebox.showinfo("Info", "Please select a package first")
+            return
+        
+        # Get size estimate
+        try:
+            size = self.downloader.get_download_size(
+                self.current_package.name,
+                self.current_package.version
+            )
+            size_mb = size / (1024 * 1024)
+            
+            result = messagebox.askyesno(
+                "Download Package",
+                f"Download {self.current_package.name}@{self.current_package.version}?\n\n"
+                f"Estimated size: {size_mb:.2f} MB"
+            )
+            
+            if not result:
+                return
+        except Exception as e:
+            logger.exception("Failed to get download size")
+        
+        self.set_status(f"Downloading {self.current_package.name}...")
+        
+        def download():
+            try:
+                path = self.downloader.download_package(
+                    self.current_package.name,
+                    self.current_package.version,
+                    extract=True
+                )
+                self.root.after(0, lambda: self._download_complete(path))
+            except Exception as e:
+                logger.exception("Download failed")
+                self.root.after(0, lambda: self.set_status(f"Download failed: {e}"))
+        
+        threading.Thread(target=download, daemon=True).start()
+    
+    def _download_complete(self, path):
+        """Handle download completion."""
+        messagebox.showinfo(
+            "Download Complete",
+            f"Package downloaded to:\n{path}"
+        )
+        self.set_status(f"Downloaded to: {path}")
+    
     def set_status(self, message: str):
         """Update status bar."""
         self.status_label.config(text=message)
@@ -344,4 +504,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
